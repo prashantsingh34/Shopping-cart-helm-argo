@@ -1,0 +1,115 @@
+version: 2.1
+orbs:
+  gcp-cli: circleci/gcp-cli@3.2.1
+  node: circleci/node@5
+
+jobs:
+  test-node:
+    executor: node/default
+    steps:
+      - checkout
+      - node/install-packages:
+          pkg-manager: npm
+      - run:
+          name: Run tests
+          command: npm test --passWithNoTests
+  build:
+    docker:
+      - image: google/cloud-sdk
+    steps:
+      - checkout
+      - gcp-cli/setup:
+          version: latest
+          use_oidc: true
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Updating the git tag version
+          command: |
+            last_tag=$(git describe --tags --abbrev=0)
+            major_version=$(echo "$last_tag" | cut -d '.' -f 1)
+            minor_version=$(echo "$last_tag" | cut -d '.' -f 2)
+            patch_version=$(echo "$last_tag" | cut -d '.' -f 3)
+            new_patch_version=$((patch_version + 1))
+            # Construct the new tag with incremented patch version
+            new_tag="${major_version}.${minor_version}.${new_patch_version}"
+            # Create the tag 
+            git tag -a "$new_tag" -m "Auto-generated tag: $new_tag"
+
+            git push origin --tags          
+      - run:
+          name: Set up Docker for gcloud
+          command: |
+            gcloud auth configure-docker us-central1-docker.pkg.dev
+      - run:
+          name: Docker build
+          command: |
+            docker build -t react-app .
+      - run:
+          name: Tag Docker image
+          command: |
+            latest_tag=$(git describe --tags --abbrev=0)
+            docker tag react-app us-central1-docker.pkg.dev/$GOOGLE_PROJECT_ID/shopping-cart/shopping-cart-image:${latest_tag}
+      - run:
+          name: Push docker image
+          command: |
+            latest_tag=$(git describe --tags --abbrev=0)
+            docker push us-central1-docker.pkg.dev/$GOOGLE_PROJECT_ID/shopping-cart/shopping-cart-image:${latest_tag}
+  deploy:
+    docker:
+      - image: google/cloud-sdk
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Updating image tag nad version of Helm Chart
+          command: |
+            latest_tag=$(git describe --tags --abbrev=0)
+    
+            git clone "https://$USERNAME:$TOKEN@github.com/$HELM_REPO_URL.git"
+
+
+            cd $(basename "$HELM_REPO_URL")
+
+            sed -i "s/^version: .*/version: $latest_tag/" "cart-service/Chart.yaml"
+            sed -i "s/^ *tag: .*/  tag: \"$latest_tag\"/" "cart-service/values.yaml"
+
+            # Commit and push the changes
+            git config --global user.email "$EMAIL"
+            git config --global user.name "$USERNAME"
+            git add .
+            git commit -m "Update Helm chart version to $NEW_TAG"
+            git push origin main
+
+
+            echo "Helm chart version updated and changes pushed successfully."
+  
+
+workflows:
+  main:
+    jobs: 
+      - test-node
+      - build:
+          filters:
+             branches:
+               only:
+                 - main
+      - release-approval:
+          type: approval
+          requires:
+            - test-node
+            - build
+          filters:
+             branches:
+               only:
+                 - main
+      - deploy:
+          requires:
+            - test-node
+            - build
+            - release-approval
+          filters:
+             branches:
+               only:
+                 - main 
