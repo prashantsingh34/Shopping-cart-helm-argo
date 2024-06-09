@@ -63,7 +63,7 @@ jobs:
       - setup_remote_docker:
           docker_layer_caching: true
       - run:
-          name: Updating image tag nad version of Helm Chart
+          name: Updating image tag and version of Helm Chart
           command: |
             latest_tag=$(git describe --tags --abbrev=0)
     
@@ -79,7 +79,7 @@ jobs:
             git config --global user.email "$EMAIL"
             git config --global user.name "$USERNAME"
             git add .
-            git commit -m "Update Helm chart version to $NEW_TAG"
+            git commit -m "Update Helm chart version to $latest_tag"
             git push origin main
 
 
