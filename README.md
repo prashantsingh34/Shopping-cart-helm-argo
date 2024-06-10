@@ -22,6 +22,8 @@ We've configured ArgoCD to watch the Helm chart repository containing our applic
 
 This shopping cart application is based on react js. The CICD pepeline is setup using *circleci* and containerised using *Docker*. 
 
+The helm chart repository can be found [here](https://github.com/prashantsingh34/helm-charts-services)
+
 ## Available Scripts
 
 In the project directory, you can run:
